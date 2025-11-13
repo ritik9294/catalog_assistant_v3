@@ -15,28 +15,25 @@ import zipfile
 import requests
 import pymysql
 
-# Found existing installation: google-generativeai 0.7.0
-# Uninstalling google-generativeai-0.7.0:
-#   Successfully uninstalled google-generativeai-0.7.0
-# Found existing installation: google-ai-generativelanguage 0.6.5
-# Uninstalling google-ai-generativelanguage-0.6.5:
-#   Successfully uninstalled google-ai-generativelanguage-0.6.5
-# Found existing installation: langchain-google-genai 2.1.12
-# Uninstalling langchain-google-genai-2.1.12:
-#   Successfully uninstalled langchain-google-genai-2.1.12
-# Found existing installation: langchain-core 0.3.79
-# Uninstalling langchain-core-0.3.79:
-#   Successfully uninstalled langchain-core-0.3.79
-
-
 warnings.filterwarnings("ignore")
 
 
 load_dotenv()
 
-if "GOOGLE_API_KEY" not in os.environ:
-	st.error("Google API key not found. Please set it in a .env file.")
-	st.stop()
+GOOGLE_API_KEY = (
+    st.secrets.get("GOOGLE_API_KEY")
+    if "GOOGLE_API_KEY" in st.secrets
+    else os.getenv("GOOGLE_API_KEY")
+)
+GOOGLE_CSE_ID = (
+    st.secrets.get("GOOGLE_CSE_ID")
+    if "GOOGLE_CSE_ID" in st.secrets
+    else os.getenv("GOOGLE_CSE_ID")
+)
+
+if not GOOGLE_API_KEY:
+    st.error("Google API key not found. Please set it in Streamlit Secrets or .env file.")
+    st.stop()
 
 # --- Helper Functions ---
 
@@ -56,7 +53,7 @@ image_enhancer_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-image-previe
 def get_search_tool():
 	print("--- Initializing Google Search Tool ---")
 	# This requires GOOGLE_CSE_ID and GOOGLE_API_KEY in your .env file
-	return GoogleSearchAPIWrapper(google_cse_id=os.environ.get("GOOGLE_CSE_ID"))
+	return GoogleSearchAPIWrapper(google_cse_id=GOOGLE_CSE_ID, google_api_key=GOOGLE_API_KEY)
 
 search_tool = get_search_tool()
 
@@ -1979,3 +1976,4 @@ if st.session_state.step == "display_all_results":
 	if st.button("✅ Done - Start a New Session", key="done_all", use_container_width=True, type="primary"):
 		reset_session_state()
 		st.rerun()
+
