@@ -14,7 +14,6 @@ google-ai-generativelanguage==0.6.4
 Pillow==10.3.0
 
 # --- Environment & Secret Management ---
-python-dotenv==1.0.1
 
 requests==2.32.5
 pymysql==1.1.2
@@ -28,4 +27,5 @@ tenacity==8.3.0
 # --- Other Core Dependencies ---
 # Pinning these prevents pip from installing conflicting newer versions.
 google-api-python-client==2.130.0
+
 google-search-results==2.4.2
