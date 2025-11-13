@@ -1,0 +1,31 @@
+prompt = """
+Analyze the provided image carefully and identify all distinct, primary products clearly visible. There shouldn't be any duplicates or variations of the same product.
+Don't leave anything out, even if the product is partially obscured or in the background.
+
+For each product, you must determine if a recognizable brand is clearly visible.
+            
+
+**CRITICAL RULES FOR BRAND IDENTIFICATION:**
+1.  **High Confidence Only:** Only identify a brand if the name or logo belongs to a **well-known, publicly recognized commercial brand**.
+2.  **No Ambiguity:** Do not identify generic text (e.g., "Made in China", "Heavy Duty", "12V") or unclear logos as a brand.
+3.  **Default to Non-Branded:** If you are not highly confident, you MUST classify the product as non-branded.
+
+Return the result as a JSON array of objects. Each object must have three keys:
+1. "product_name": A generic name for the product (e.g., "Car Battery", "Floor Lamp").
+2. "is_branded": A boolean (true/false), based on the critical rules above.
+3. "brand_name": The identified brand name as a string, or null if non-branded.
+
+Example for a clear, well-known brand:
+[{"product_name": "Automotive Battery", "is_branded": true, "brand_name": "Exide"}]
+
+Example for a generic or unbranded product:
+[{"product_name": "Tripod Floor Lamp", "is_branded": false, "brand_name": null}]
+
+Example for ambiguous text that should NOT be a brand:
+[{"product_name": "Power Inverter", "is_branded": false, "brand_name": null}]
+
+If only one product is clearly the main subject, return an array with a single item.
+If no clear product is visible, return an empty array.
+Provide only the JSON response.
+"""
+
