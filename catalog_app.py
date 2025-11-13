@@ -1,4 +1,4 @@
-import streamlit as st 
+import streamlit as st # type: ignore
 from st_copy_to_clipboard import st_copy_to_clipboard # type: ignore
 import os
 import json
@@ -12,26 +12,29 @@ import base64
 import warnings
 import io
 import zipfile
-import requests
-import pymysql
+
+# Found existing installation: google-generativeai 0.7.0
+# Uninstalling google-generativeai-0.7.0:
+#   Successfully uninstalled google-generativeai-0.7.0
+# Found existing installation: google-ai-generativelanguage 0.6.5
+# Uninstalling google-ai-generativelanguage-0.6.5:
+#   Successfully uninstalled google-ai-generativelanguage-0.6.5
+# Found existing installation: langchain-google-genai 2.1.12
+# Uninstalling langchain-google-genai-2.1.12:
+#   Successfully uninstalled langchain-google-genai-2.1.12
+# Found existing installation: langchain-core 0.3.79
+# Uninstalling langchain-core-0.3.79:
+#   Successfully uninstalled langchain-core-0.3.79
+
 
 warnings.filterwarnings("ignore")
 
 
-GOOGLE_API_KEY = (
-    st.secrets.get("GOOGLE_API_KEY")
-    if "GOOGLE_API_KEY" in st.secrets
-    else os.getenv("GOOGLE_API_KEY")
-)
-GOOGLE_CSE_ID = (
-    st.secrets.get("GOOGLE_CSE_ID")
-    if "GOOGLE_CSE_ID" in st.secrets
-    else os.getenv("GOOGLE_CSE_ID")
-)
+load_dotenv()
 
-if not GOOGLE_API_KEY:
-    st.error("Google API key not found. Please set it in Streamlit Secrets or .env file.")
-    st.stop()
+if "GOOGLE_API_KEY" not in os.environ:
+	st.error("Google API key not found. Please set it in a .env file.")
+	st.stop()
 
 # --- Helper Functions ---
 
@@ -51,78 +54,11 @@ image_enhancer_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-image-previe
 def get_search_tool():
 	print("--- Initializing Google Search Tool ---")
 	# This requires GOOGLE_CSE_ID and GOOGLE_API_KEY in your .env file
-	return GoogleSearchAPIWrapper(google_cse_id=GOOGLE_CSE_ID, google_api_key=GOOGLE_API_KEY)
+	return GoogleSearchAPIWrapper(google_cse_id=os.environ.get("GOOGLE_CSE_ID"))
 
+# Load the tool at the start of the app
 search_tool = get_search_tool()
 
-KEYWORD_SELECTION_PROMPT = """
-You are a B2B SEO and Product Categorization expert. Your task is to select the most relevant product keyword for the item shown in an image.
-
-CONTEXT:
-- You will be given an image of a product.
-- You will also be given a list of 10 suggested keyword names from an API: {keyword_list_str}
-
-TASK:
-1.  **Analyze the Image:** Carefully examine the product in the provided image to understand what it is.
-2.  **Review the List:** Read through the list of 10 suggested keyword names.
-3.  **Select the Best Fit:** Choose the SINGLE most accurate and commercially relevant keyword name from the list that best describes the product in the image.
-4.  **Fallback Rule:** If, and only if, NONE of the suggestions are a good fit for the product in the image, you MUST generate a new, more accurate B2B-specific keyword yourself.
-
-OUTPUT FORMAT (JSON only):
-Return a JSON object with a single key: "selected_keyword_name".
-Example for a selection: {{"selected_keyword_name": "Plastic Water Bottle"}}
-Example for a new generation: {{"selected_keyword_name": "Ornate Brass Divine Idol"}}
-
-Provide only the final JSON response.
-"""
-
-# --- The new, upgraded prompt for the non-branded flow ---
-COMPREHENSIVE_ANALYSIS_PROMPT = """
-You are an expert B2B product cataloger. Your task is to analyze a product image, select the most critical specifications from a long list, and then fill them out.
-
-CONTEXT:
-- You are given an image of a '{product_name}'.
-- You are provided with a comprehensive list of potential specification attributes from our database: {db_spec_list_str}
-
-TASK:
-Perform a three-part analysis in a single, logical flow:
-
-**Part 1: Prioritize and Select Key Specifications**
-- From the comprehensive database list you were given, select the **6 to 7 most important** attributes.
-- Your selection must be based on what is most critical for a B2B purchasing decision for a '{product_name}'. Do not select minor or redundant attributes.
-- 
-
-**Part 2: Analyze and Partition Your Selected Specs**
-- Now, take your new, shorter list of 6-7 key specs.
-- For each attribute in this new list, carefully examine the image.
-- Partition them into two groups:
-	- **Visible Specs:** Attributes whose value you can determine with high confidence from the image.
-	- **Missing Specs:** Attributes whose value CANNOT be determined from the image.
-
-**Part 3: Format the Output**
-- Based on your analysis in Part 2, construct the final JSON output.
-- "filled_specs" must contain the "Visible Specs".
-- "questions_to_ask" must contain concise questions for the "Missing Specs".
-
-Note: Exclude the specs brand/model number/price/etc. which can be found via SKU lookup later.
-
-EXAMPLE:
-- If the DB list has 15 attributes like ["Material", "Color", "Capacity", "Voltage", "Wattage", "Handle Type", "Finish", ...],
-- And for a Water Bottle, you select ["Material", "Color", "Capacity"] as the most critical,
-- And you can see the Material and Color in the image, but not the Capacity,
-- The output should be:
-{{
-  "filled_specs": [
-	{{"attribute": "Material", "value": "Plastic"}},
-	{{"attribute": "Color", "value": "Green"}}
-  ],
-  "questions_to_ask": [
-	"What is the Capacity (in Liters) of the bottle?"
-  ]
-}}
-
-Provide only the final JSON response.
-"""
 
 ADVANCED_IMAGE_PROMPT = """
 You are an AI cataloguing assistant for B2B products.
@@ -234,119 +170,10 @@ You MUST return a JSON object with two keys:
 
 Provide only the final JSON response.
 """
-	
-def get_keywords_from_api(query):
-	"""
-	Calls the API, parses the response, and returns a clean list of dictionaries
-	containing only the id, name, psv_node_id, and psv_node_name.
 
-	Returns:
-		list: A clean list of dictionaries, or None if the call fails.
-	"""
-	from urllib.parse import quote
-	encoded_query = quote(query)
-	
-	api_url = f"http://192.168.8.220:8081/productBank_autosuggest.php?limit=20&page=1&type=2&sort=pop&service=0&omni=1&srchterm={encoded_query}" # Example URL
-	
-	st.info(f"🔍 Calling Keyword API with query: {query}")
+### Part 2: The Code Implementation
 
-	try:
-		response = requests.get(api_url, timeout=10)
-		response.raise_for_status()
-		
-		response_dict = response.json()
-		
-		if isinstance(response_dict, dict) and "data" in response_dict:
-			data_list = response_dict["data"]
-			
-			if isinstance(data_list, list) and len(data_list) > 0:
-				# --- THE FIX: Process the data here to extract only what we need ---
-				cleaned_keywords = []
-				for item in data_list:
-					# Ensure the item is a dictionary before accessing keys
-					if isinstance(item, dict):
-						cleaned_keywords.append({
-							"id": item.get("id"),
-							"name": item.get("name"),
-							"psv_node_id": item.get("psv_node_id"),
-							"psv_node_name": item.get("psv_node_name")
-						})
-				
-				
-				if cleaned_keywords:
-					st.success("✅ Successfully fetched and processed keyword suggestions.")
-					return cleaned_keywords
-				else:
-					st.warning("API data was in an unexpected format; could not extract keywords.")
-					return None
-			else:
-				st.warning("API returned no keyword suggestions in the 'data' field.")
-				return None
-		else:
-			st.warning("API response was not in the expected format (missing 'data' key).")
-			return None
-
-	except requests.exceptions.Timeout:
-		st.error("API Error: The request to the keyword server timed out.")
-		return None
-	except requests.exceptions.RequestException as e:
-		st.error(f"API Error: Could not fetch keywords. Details: {e}")
-		return None
-	except ValueError:
-		st.error("API Error: The server returned an invalid response that was not JSON.")
-		return None
-
-
-def get_specs_from_database(psv_node_id):
-	"""
-	Queries your MySQL database to get a list of specification attributes.
-	Returns a list of spec names on success, or None on failure.
-	"""
-	db_credentials = {
-		"host": "192.168.24.118",
-		"port": 3306,
-		"user": "ritikk",
-		"passwd": "ritik@123",
-		"db": "india_snapshot",
-		"charset": "utf8"
-	}
-
-	if psv_node_id == "0" or not psv_node_id:
-		st.warning("Cannot query database because the keyword was AI-generated. A generic template will be created.")
-		return [] 
-
-	st.info(f"🗄️ Querying database for specs with PSV Node ID: {psv_node_id}")
-
-	try:
-		connection = pymysql.connect(**db_credentials, cursorclass=pymysql.cursors.DictCursor)
-		with connection:
-			with connection.cursor() as cursor:
-				sql_query = f"""SELECT psv_node_id,
-									  psv_node_name,
-									  spec_id,
-									  spec_name,
-									  spec_display_name,
-									  sort_display_flag,
-									  display_active_flag,
-									  spec_active_flag,
-									  dc_flag
-									  FROM db_product_operations.`tbl_spec_mapping`
-									  WHERE psv_node_id={psv_node_id}
-									  AND spec_active_flag=1 AND display_active_flag=1 AND dc_flag=1"""
-				cursor.execute(sql_query)
-				results = cursor.fetchall()
-				
-				if results:
-					spec_list = [row['spec_name'] for row in results]
-					st.success(f"✅ Found {len(spec_list)} specifications in the database.")
-					return spec_list
-				else:
-					st.warning(f"No specifications found in the database for PSV Node ID: {psv_node_id}. A new template will be generated.")
-					return [] 
-
-	except pymysql.MySQLError as e:
-		st.error(f"Database Connection Failed: Could not fetch specifications. Please check your connection. Details: {e}")
-		return None
+#### **Step 1: Add a New Helper Function**
 
 def generate_b2b_catalog_images(product_name, specifications_list):
 	"""
@@ -460,25 +287,25 @@ def render_product_listing(product_id, listing_data, image_bytes_list, image_mim
 
 		# --- Logic to handle submission ---
 		if save_button_pressed:
-			# --- THE FIX: We use the variables returned by the widgets, not session state keys ---
-			
-			# For the dynamic lists, we DO read from session state as that's where we managed them.
+            # --- THE FIX: We use the variables returned by the widgets, not session state keys ---
+            
+            # For the dynamic lists, we DO read from session state as that's where we managed them.
 			edited_specs_on_submit = []
 			for i, spec in enumerate(st.session_state[spec_state_key]):
 				attr_val = st.session_state[f"attr_{product_id}_{i}"]
 				val_val = st.session_state[f"val_{product_id}_{i}"]
 				if attr_val and val_val:
 					edited_specs_on_submit.append({"attribute": attr_val, "value": val_val})
-			
+            
 			final_pricing = [p for p in st.session_state.get(f"pricing_edit_{product_id}", []) if p.get('unit') and p.get('price_range')]
-			
-			# Update the original listing_data dictionary
+            
+            # Update the original listing_data dictionary
 			listing_data['product_name'] = edited_name
 			listing_data['specifications'] = edited_specs_on_submit
 			listing_data['description'] = edited_desc
 			listing_data['primary_keyword'] = edited_keyword
 			listing_data['pricing'] = final_pricing
-			
+            
 			st.session_state.edit_mode_status[edit_key] = False
 			st.success("Changes saved!")
 			st.rerun()
@@ -633,6 +460,7 @@ def render_product_listing(product_id, listing_data, image_bytes_list, image_mim
 
 			st.markdown("**Primary Keyword:**")
 			st.code(listing_data.get('primary_keyword', 'N/A'))
+
 	
 
 def reset_session_state():
@@ -782,11 +610,7 @@ if "edit_mode_status" not in st.session_state:
 if "user_model_number" not in st.session_state:
 	st.session_state.user_model_number = None
 if "confirm_source_image" not in st.session_state:
-	st.session_state.confirm_source_image = None
-if "api_keywords" not in st.session_state:
-	st.session_state.api_keywords = [] # <-- THE CRITICAL FIX
-if "selected_keyword_data" not in st.session_state:
-	st.session_state.selected_keyword_data = None
+    st.session_state.confirm_source_image = None
 
 
 # --- Step 0: Image Upload ---
@@ -952,6 +776,7 @@ if st.session_state.step == "product_not_found_fail":
 	if st.button("Upload a New Image", use_container_width=True):
 		# Call the reset function to clear all old data.
 		reset_session_state()
+		# Rerun the app to go back to the initial upload screen.
 		st.rerun()
 
 if st.session_state.step == "confirm_product":
@@ -1130,14 +955,10 @@ if st.session_state.step == "quality_check":
 		st.rerun()
 
 	with st.spinner("Step 1: Performing Image Quality Check..."):
-		prompt = f"""
+		prompt = """
 		You are an image quality inspector. Analyze the provided image based on these criteria and respond with a JSON object.
-		
-		Product name: {st.session_state.selected_product}
-		Product Brand: {st.session_state.brand_name if st.session_state.is_branded_flow else "N/A"}
-
 		1. human_present: Is a human hand or body part clearly visible? (true/false)
-		2. watermark_present: Is a logo or watermark visible that is not part of the product/brand itself with Product Details provided above? (true/false)
+		2. watermark_present: Is a logo or watermark visible that is not part of the product itself? (true/false)
 		3. background_cluttered: Is the background irrelevant or distracting? (true/false)
 		4. is_blurry: Is the image low quality or blurry? (true/false)
 		5. is_screenshot: Does the image appear to be a screenshot with UI elements? (true/false)
@@ -1245,109 +1066,110 @@ if st.session_state.step == "perform_enhancement":
 
 
 if st.session_state.step == "confirm_source_image":
-	st.subheader("Confirm Final Product Image")
-	st.info("This image will be used as the reference for all subsequent AI generation steps. Please ensure it is correct.")
+    st.subheader("Confirm Final Product Image")
+    st.info("This image will be used as the reference for all subsequent AI generation steps. Please ensure it is correct.")
 
-	# Display the current working image
-	st.image(st.session_state.image_bytes, use_container_width=True)
+    # Display the current working image
+    st.image(st.session_state.image_bytes, use_container_width=True)
 
-	# Create columns for the action buttons
-	col1, col2, col3 = st.columns([1, 2, 1])
+    # Create columns for the action buttons
+    col1, col2, col3 = st.columns([1, 2, 1])
 
-	with col1:
-		# --- Add the Rotate Image button ---
-		if st.button("🔄 Rotate 90°", use_container_width=True):
-			try:
-				# Use the same logic from the final render function
-				image = Image.open(io.BytesIO(st.session_state.image_bytes))
-				rotated_image = image.rotate(-90, expand=True)
-				
-				buffer = io.BytesIO()
-				rotated_image.save(buffer, format="PNG")
-				
-				# Overwrite the main working image with the rotated version
-				st.session_state.image_bytes = buffer.getvalue()
-				st.rerun() # Rerun the page to show the rotated image
-			except Exception as e:
-				st.error(f"Could not rotate image: {e}")
+    with col1:
+        # --- Add the Rotate Image button ---
+        if st.button("🔄 Rotate 90°", use_container_width=True):
+            try:
+                # Use the same logic from the final render function
+                image = Image.open(io.BytesIO(st.session_state.image_bytes))
+                rotated_image = image.rotate(-90, expand=True)
+                
+                buffer = io.BytesIO()
+                rotated_image.save(buffer, format="PNG")
+                
+                # Overwrite the main working image with the rotated version
+                st.session_state.image_bytes = buffer.getvalue()
+                st.rerun() # Rerun the page to show the rotated image
+            except Exception as e:
+                st.error(f"Could not rotate image: {e}")
 
-	with col2:
-		# --- The "Proceed" button is now the main workflow router ---
-		if st.button("✅ Proceed with this Image", use_container_width=True, type="primary"):
-			# This is where the logic moved from the quality_check step
-			if st.session_state.get("is_branded_flow"):
-				st.session_state.step = "prompt_for_model_number"
-			else:
-				st.session_state.step = "get_api_keywords"
-			st.rerun()
+    with col2:
+        # --- The "Proceed" button is now the main workflow router ---
+        if st.button("✅ Proceed with this Image", use_container_width=True, type="primary"):
+            # This is where the logic moved from the quality_check step
+            if st.session_state.get("is_branded_flow"):
+                st.session_state.step = "prompt_for_model_number"
+            else:
+                st.session_state.step = "get_critical_attribute"
+            st.rerun()
 
-	with col3:
-		# --- The "Start Over" button ---
-		if st.button("❌ Upload New", use_container_width=True):
-			reset_session_state()
-			st.rerun()
+    with col3:
+        # --- The "Start Over" button ---
+        if st.button("❌ Upload New", use_container_width=True):
+            reset_session_state()
+            st.rerun()
 
 # --- NEW STEP: Confirm the Enhanced Image ---
 if st.session_state.step == "confirm_enhancement":
-	st.success("✅ AI Enhancement Complete!")
-	st.write("Please review the result. If you are satisfied, use the enhanced image to proceed.")
-	
-	# --- NEW: Main action buttons are now at the TOP ---
-	colA, colB = st.columns(2)
-	with colA:
-		if st.button("👍 Use Enhanced Image", use_container_width=True, type="primary"):
-			# This button will use the (potentially rotated) enhanced image
-			st.session_state.image_bytes = st.session_state.enhanced_image_bytes
-			st.session_state.image_mime_type = "image/png"
-			
-			# Proceed to the correct next step based on the workflow
-			if st.session_state.get("is_branded_flow"):
-				st.session_state.step = "prompt_for_model_number"
-			else:
-				st.session_state.step = "get_api_keywords"
-			st.success("Great! Proceeding with the clean image...")
-			st.rerun()
+    st.success("✅ AI Enhancement Complete!")
+    st.write("Please review the result. If you are satisfied, use the enhanced image to proceed.")
+    
+    # --- NEW: Main action buttons are now at the TOP ---
+    colA, colB = st.columns(2)
+    with colA:
+        if st.button("👍 Use Enhanced Image", use_container_width=True, type="primary"):
+            # This button will use the (potentially rotated) enhanced image
+            st.session_state.image_bytes = st.session_state.enhanced_image_bytes
+            st.session_state.image_mime_type = "image/png"
+            
+            # Proceed to the correct next step based on the workflow
+            if st.session_state.get("is_branded_flow"):
+                st.session_state.step = "prompt_for_model_number"
+            else:
+                st.session_state.step = "get_critical_attribute"
+            st.success("Great! Proceeding with the clean image...")
+            st.rerun()
 
-	with colB:
-		if st.button("🔄 Start Over with a New Image", use_container_width=True):
-			reset_session_state()
-			st.rerun()
+    with colB:
+        if st.button("🔄 Start Over with a New Image", use_container_width=True):
+            reset_session_state()
+            st.rerun()
 
-	# Add a separator for a cleaner layout
-	st.markdown("---")
+    # Add a separator for a cleaner layout
+    st.markdown("---")
 
-	# --- Image display is now in the MIDDLE ---
-	col1, col2 = st.columns(2)
-	with col1:
-		st.subheader("Before")
-		st.image(st.session_state.uploaded_image, use_container_width=True)
-	with col2:
-		st.subheader("After (AI Enhanced)")
-		st.image(st.session_state.enhanced_image_bytes, use_container_width=True)
+    # --- Image display is now in the MIDDLE ---
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Before")
+        st.image(st.session_state.uploaded_image, use_container_width=True)
+    with col2:
+        st.subheader("After (AI Enhanced)")
+        st.image(st.session_state.enhanced_image_bytes, use_container_width=True)
 
-		# --- Rotate button is now at the BOTTOM ---
-		if st.button("🔄 Rotate Enhanced Image 90°", key="rotate_enhancement", use_container_width=True):
-			try:
-				# Get the raw bytes of the image we want to rotate
-				image_to_rotate_bytes = st.session_state.enhanced_image_bytes
-				
-				# Open the image from memory using Pillow
-				image = Image.open(io.BytesIO(image_to_rotate_bytes))
-				
-				# Rotate it 90 degrees clockwise
-				rotated_image = image.rotate(-90, expand=True)
-				
-				# Save the new, rotated image back to an in-memory buffer
-				buffer = io.BytesIO()
-				rotated_image.save(buffer, format="PNG")
-				
-				# Overwrite the session state with the new rotated image
-				st.session_state.enhanced_image_bytes = buffer.getvalue()
-				
-				# Rerun the page immediately to show the rotated image
-				st.rerun()
-			except Exception as e:
-				st.error(f"Could not rotate image: {e}")
+        # --- Rotate button is now at the BOTTOM ---
+        if st.button("🔄 Rotate Enhanced Image 90°", key="rotate_enhancement", use_container_width=True):
+            try:
+                # Get the raw bytes of the image we want to rotate
+                image_to_rotate_bytes = st.session_state.enhanced_image_bytes
+                
+                # Open the image from memory using Pillow
+                image = Image.open(io.BytesIO(image_to_rotate_bytes))
+                
+                # Rotate it 90 degrees clockwise
+                rotated_image = image.rotate(-90, expand=True)
+                
+                # Save the new, rotated image back to an in-memory buffer
+                buffer = io.BytesIO()
+                rotated_image.save(buffer, format="PNG")
+                
+                # Overwrite the session state with the new rotated image
+                st.session_state.enhanced_image_bytes = buffer.getvalue()
+                
+                # Rerun the page immediately to show the rotated image
+                st.rerun()
+            except Exception as e:
+                st.error(f"Could not rotate image: {e}")
+
 
 if st.session_state.step == "quality_fail":
 	# Display the persistent error messages
@@ -1361,184 +1183,48 @@ if st.session_state.step == "quality_fail":
 		st.rerun()
 
 
-if st.session_state.step == "get_api_keywords":
-	with st.spinner("Fetching keyword suggestions from API..."):
-		# Determine the search query based on brand status
-		query = f"{st.session_state.brand_name} {st.session_state.selected_product}" if st.session_state.is_branded_flow else st.session_state.selected_product
-
-		print(query)
-
-		# Call our new, robust function
-		api_keywords = get_keywords_from_api(query)
-
-		print(api_keywords)
-
-		
-		if api_keywords:
-			# If successful, store the list of dictionaries and proceed
-			st.session_state.api_keywords = api_keywords
-			st.session_state.step = "select_best_keyword"
-			st.rerun()
-		else:
-			# If it fails (returns None), stay on this step and show the error
-			st.error("Could not retrieve keyword data. The process cannot continue without it.")
-			# You can add a button to allow the user to try again or start over
-			if st.button("Try Again"):
-				st.rerun()
-
-
-# --- Step 5: Select Best Keyword with AI (with User Confirmation) ---
-if st.session_state.step == "select_best_keyword":
-	with st.spinner("AI is analyzing the image and selecting the best keyword..."):
-		
-		# This part is only run once to get the AI's decision
-		if "ai_keyword_decision" not in st.session_state:
-			keyword_names = [kw.get("name", "") for kw in st.session_state.api_keywords]
-
-			# print(keyword_names)
-
-			
-			prompt = KEYWORD_SELECTION_PROMPT.format(keyword_list_str=str(keyword_names))
-
-			# print(prompt)
-
-
-			message = HumanMessage(content=[{"type": "text", "text": prompt},
-			{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(st.session_state.image_bytes).decode('utf-8')}"}},])
-			
-			response_content = invoke_text_model_with_tracking(llm, message)
-			selection_data = safe_json_parse(response_content)
-
-			if selection_data and "selected_keyword_name" in selection_data:
-				# Store the AI's decision in the session state
-				st.session_state.ai_keyword_decision = selection_data["selected_keyword_name"]
-				st.rerun() # Rerun to display the result and confirmation options
-			else:
-				st.error("AI failed to select a keyword. The process cannot continue.")
-				st.write("Model Response:", response_content)
-				if st.button("Try Again"):
-					st.rerun()
-				st.stop() # Stop execution if the AI fails
-
-	# --- This part of the code runs AFTER the AI has made its decision ---
-	selected_name = st.session_state.ai_keyword_decision
-
-	# Find the full data object that matches the name the AI chose
-	found_keyword_data = next(
-		(kw for kw in st.session_state.api_keywords if kw.get("name") == selected_name), 
-		None
-	)
-	
-	if found_keyword_data:
-		# --- CASE 1: AI selected a keyword from the API's list ---
-		st.success(f"AI selected a keyword from the suggestions: **{selected_name}**")
-		st.info("The process will now continue automatically.")
-		
-		st.session_state.selected_keyword_data = found_keyword_data
-		
-		# Automatically proceed after a short delay
-		import time
-		time.sleep(2)
-		del st.session_state.ai_keyword_decision # Clean up the state
-		st.session_state.step = "get_db_specs"
-		st.rerun()
-	else:
-		# --- CASE 2: AI generated a new keyword. Wait for user confirmation. ---
-		st.warning("AI determined that none of the API suggestions were relevant.")
-		
-		with st.expander("View irrelevant API suggestions"):
-			st.write(f"The following suggestions were considered a poor fit for the product '{st.session_state.selected_product}':")
-			
-			# --- THE FIX: Get the list of names and loop through them ---
-			keyword_names = [kw.get("name", "N/A") for kw in st.session_state.api_keywords]
-			
-			# Display the suggestions as a simple, readable list.
-			for i, name in enumerate(keyword_names):
-				st.markdown(f"- {name}")
-
-
-		st.success(f"AI suggested a new, more accurate keyword: **{selected_name}**")
-		
-		# --- THE FIX: Add a confirmation button ---
-		if st.button(f"✅ Proceed with AI Suggested Keyword: '{selected_name}'", use_container_width=True, type="primary"):
-			st.session_state.selected_keyword_data = {
-				"id": "0",
-				"name": selected_name,
-				"psv_node_id": "0",
-				"psv_node_name": "AI Generated Category"
-			}
-			del st.session_state.ai_keyword_decision # Clean up the state
-			st.session_state.step = "get_db_specs"
-			st.rerun()
-
-
-if st.session_state.step == "get_db_specs":
-	spec_options = None
-	# First, try to get specs from the database
-	with st.spinner("Fetching specification template from database..."):
-		psv_node_id = st.session_state.selected_keyword_data.get("psv_node_id")
-		spec_options = get_specs_from_database(psv_node_id)
-	
-	print(spec_options)
-
-	if spec_options is not None:
-		# --- This block runs if the DB connection was successful ---
-		# The rigid '< 5' logic has been REMOVED.
-		st.session_state.db_spec_options = spec_options
-		
-		# --- THE MAIN WORKFLOW FORK ---
-		if st.session_state.is_branded_flow:
-			# The branded flow is ready to ask for the model number
-			st.session_state.step = "prompt_for_model_number"
-			st.rerun()
-		else:
-			# --- THE NON-BRANDED FLOW ---
-			# Now, call our new comprehensive analysis prompt
-			with st.spinner("AI is analyzing the image, filling specs, and identifying all necessary questions..."):
-				prompt = COMPREHENSIVE_ANALYSIS_PROMPT.format(
-					product_name=st.session_state.selected_product,
-					db_spec_list_str=str(st.session_state.db_spec_options)
-				)
-				
-				message = HumanMessage(content=[{"type": "text", "text": prompt},
-				{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(st.session_state.image_bytes).decode('utf-8')}"}},])
-				response_content = invoke_text_model_with_tracking(llm, message)
-
-				print(response_content)
-
-				analysis_data = safe_json_parse(response_content)
-
-				if analysis_data and "filled_specs" in analysis_data and "questions_to_ask" in analysis_data:
-					# Store the specs that the AI could fill in by itself
-					st.session_state.ai_filled_specs = analysis_data["filled_specs"]
-					questions = analysis_data["questions_to_ask"]
-
-					if questions:
-						# If there are questions, go to the user input step
-						st.session_state.critical_questions = questions
-						st.session_state.step = "ask_user"
-					else:
-						# If no questions, we have all the data. Skip to customization.
-						st.warning("AI filled all specifications from the image. No user input needed.")
-						formatted_specs = ", ".join([f"{spec['attribute']}: {spec['value']}" for spec in st.session_state.ai_filled_specs])
-						st.session_state.critical_attribute = formatted_specs
-						st.session_state.step = "ask_customization_yes_no"
-					st.rerun()
-				else:
-					st.error("AI analysis of specifications failed. Please try again.")
-
-	else:
-		# This is the DB connection failure logic (unchanged)
-		st.subheader("Database Connection Failed")
-		if st.button("Retry Connection", use_container_width=True, type="primary"):
-			st.rerun()
-
 
 # --- Step 3: Critical Attribute Input ---
-if st.session_state.step == "ask_user":
-	st.subheader("Additional Information Required")
-	st.write("The AI could not determine the following critical attributes from the image. Please provide them below:")
+if st.session_state.step == "get_critical_attribute":
+	with st.spinner("Step 3: Analyzing image to determine necessary information..."):
+		# NEW PROMPT: Asks for up to two questions based on the image itself.
+		prompt = f"""
+		Analyze the provided image of a '{st.session_state.selected_product}'.
+		Based on what you can see, what are the most critical attributes a B2B buyer would need to know that are likely not visible?
+		Formulate a maximum of two concise questions to ask the user for this information.
 
+		Examples:
+		- For a transformer image: ["What is the rated capacity (e.g., 100 kVA)?", "What is the primary voltage (e.g., 480V)?"]
+		- For a pipe fitting image: ["What is the connection size/type (e.g., 1/2\" NPT)?"]
+
+		Respond with only a JSON object containing a list of questions, like: {{"questions": ["Question 1?", "Question 2?"]}}
+		If only one question is necessary, return a list with one item. If no questions are needed, return an empty list.
+		"""
+
+		message = HumanMessage(content=[{"type": "text", "text": prompt}, 
+			{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(st.session_state.image_bytes).decode('utf-8')}"}},
+		])
+		response_content = invoke_text_model_with_tracking(llm, message)
+		question_data = safe_json_parse(response_content)
+
+		# NEW: Handle a list of questions or an empty list.
+		if question_data and "questions" in question_data and question_data["questions"]:
+			st.session_state.critical_questions = question_data["questions"] # Store the list of questions
+			st.session_state.step = "ask_user"
+			st.rerun()
+		else:
+			# If the model fails or returns no questions, skip this step.
+			st.warning("Could not determine critical questions, or none were needed. Proceeding without additional user input.")
+			st.session_state.critical_attribute = "Not provided"
+			st.session_state.step = "generate_listing"
+			st.rerun()
+
+
+
+
+if st.session_state.step == "ask_user":
+	st.subheader("Prompt:")
+	st.write("Please provide the following critical attributes for an accurate listing:")
 
 	with st.form("attribute_form"):
 		# NEW: Dynamically create a text input for each question from the list.
@@ -1548,21 +1234,18 @@ if st.session_state.step == "ask_user":
 
 		submitted = st.form_submit_button("Submit")
 		if submitted:
-			if all(user_inputs.values()):
-				# --- THE FIX: Combine AI-filled specs and user-answered specs ---
-				
-				# Start with the specs the AI already filled
-				final_specs_list = st.session_state.get("ai_filled_specs", [])
-				
-				# Add the new specs from the user's answers
+			# NEW: Check if all generated questions have been answered.
+			all_inputs_provided = all(user_inputs.values())
+			if all_inputs_provided:
+				# Format the answers into a single, readable string for the next step.
+				formatted_answers = []
 				for question, answer in user_inputs.items():
-					# A simple way to get the attribute name from the question
-					attribute_name = question.replace("What is the ", "").split('(')[0].strip()
-					final_specs_list.append({"attribute": attribute_name, "value": answer})
-				
-				# Format the complete list into the final string
-				st.session_state.critical_attribute = ", ".join([f"{spec['attribute']}: {spec['value']}" for spec in final_specs_list])
-				
+					# Extract the attribute from the question for clean formatting.
+					# e.g., "What is the rated capacity (e.g., 100 kVA)?" -> "rated capacity"
+					attribute_name = question.split('(')[0].replace("What is the", "").strip()
+					formatted_answers.append(f"{attribute_name.title()}: {answer}")
+
+				st.session_state.critical_attribute = ", ".join(formatted_answers)
 				st.session_state.step = "ask_customization_yes_no"
 				st.rerun()
 			else:
@@ -1602,8 +1285,9 @@ if st.session_state.step == "collect_model_number":
 if st.session_state.step == "validate_model_number":
 	with st.spinner(f"Searching the web for '{st.session_state.brand_name} {st.session_state.user_model_number}'..."):
 		
-		search_query = f"{st.session_state.brand_name} {st.session_state.selected_product} model {st.session_state.user_model_number}"
+		search_query = f"official specifications for {st.session_state.brand_name} model {st.session_state.user_model_number}"
 		research_summary = search_tool.run(search_query)
+
 		print(research_summary)
 		
 		prompt = MODEL_VALIDATION_PROMPT.format(
@@ -1613,6 +1297,7 @@ if st.session_state.step == "validate_model_number":
 			research_summary=research_summary
 		)
 		
+		contents = [prompt, Image.open(io.BytesIO(st.session_state.image_bytes))]
 		
 		# Call the model with the content and the tool configuration
 		# 
@@ -1620,10 +1305,6 @@ if st.session_state.step == "validate_model_number":
 		response_content = invoke_text_model_with_tracking(llm, message)
 		
 		validation_data = safe_json_parse(response_content)
-
-		print("Validation_Data")
-
-		print(validation_data)
 
 		if validation_data and validation_data.get("model_found"):
 			# --- SUCCESS CASE ---
@@ -1651,7 +1332,7 @@ if st.session_state.step == "validate_model_number":
 if st.session_state.step == "ask_branded_sku_questions":
 
 	with st.spinner(f"Searching the web for '{st.session_state.brand_name} {st.session_state.selected_product}'..."):
-		search_query = f"specifications and variations for {st.session_state.brand_name} {st.session_state.selected_product} model - {st.session_state.user_model_number}"
+		search_query = f"specifications and variations for {st.session_state.brand_name} {st.session_state.selected_product}"
 		research_summary = search_tool.run(search_query)
 		print(research_summary)
 	
@@ -1745,18 +1426,18 @@ if st.session_state.step == "ask_customization_yes_no":
 	st.subheader("Customization / Upgradation")
 	st.write("Do you provide any customization or upgradation for this product?")
 
-	col1, col2, col3 = st.columns([1, 1, 2])
+	col1, col2, col3 = st.columns([1, 1, 2]) # Give some space
 
 	if col1.button("✅ Yes, I do", use_container_width=True):
 		st.session_state.step = "ask_customization_details"
 		st.rerun()
 
 	if col2.button("❌ No", use_container_width=True):
-		st.session_state.customization_details = None 
-		st.session_state.step = "generate_listing" 
+		st.session_state.customization_details = None # Ensure it's cleared
+		st.session_state.step = "generate_listing" # Skip the details step
 		st.rerun()
 
-
+# --- NEW STEP 3.2: Get Customization Details ---
 if st.session_state.step == "ask_customization_details":
 	st.subheader("Customization Details")
 	with st.form("customization_form"):
@@ -1791,11 +1472,9 @@ if st.session_state.step == "generate_listing":
 		if st.session_state.get("is_branded_flow") and st.session_state.get("brand_name"):
 			brand_context = f"- Brand: {st.session_state.brand_name}"
 
-		keyword = {str(st.session_state.selected_keyword_data)}
-
 
 		final_prompt = f"""
-		You are an expert B2B product cataloger. Your task is to assemble a final product listing using the structured data provided and to generate a market-appropriate price.
+		You are an expert B2B product cataloguer. Using the provided image and the following information, generate a complete product listing.
 
 		- Confirmed Product: {st.session_state.selected_product} {brand_context}
 		- User-Provided Specification: {st.session_state.critical_attribute}
@@ -1805,13 +1484,13 @@ if st.session_state.step == "generate_listing":
 
 		Follow these strict rules:
 		1. product_name: Create a precise B2B-friendly name including 2-3 key specs inferred from the image and user input (e.g., material, type, size).
-		2. specifications: Use the User Provided Specification as the base. Correct any spelling/grammatical errors.Remove any Not Applicable/irrelevant attributes/NA typo from the user input to make it Marketplace specific. Format as a list of ("attribute": "Attribute Name", "value": "Attribute Value") objects.
-		3. primary_keyword: {str(st.session_state.selected_keyword_data)}
+		2. specifications: Extract 3-8 key attributes and their values into a list of JSON objects, like [{{"attribute": "Material", "value": "Stainless Steel 304"}}]. Infer from the image and user input.
+		3. primary_keyword: Derive one singular, industry-specific keyword from the product name.
 		4. description: Write a 100-120 word SEO-friendly description. It must start with 'A' or 'The'. Do not repeat the product name in the body. Highlight benefits, durability, and applications.
 		5. pricing: - Based on the product name, brand, image, and all provided specifications, think of 3-5 common ways this product might be sold in a B2B context (e.g., as a single "Piece", a "Set of 4", a "Dozen", a "Kg", a "Meter").
 					- For EACH of these units, estimate an appropriate B2B market price range in Indian Rupees (₹).
 					- The price for a bulk unit (like "Box of 12") should reflect a slight discount compared to the single-piece price.
-					Example format for pricing (Only for reference, do NOT copy): 
+					Example format for pricing: 
 					  "pricing": [
 					   (("unit": "Piece", "price_range": "₹ 4,800 – ₹ 5,500")),
 					   (("unit": "Box of 4", "price_range": "₹ 18,500 – ₹ 21,000")),
@@ -1819,9 +1498,7 @@ if st.session_state.step == "generate_listing":
   ]
 
 		
-		
-		Provide only the final JSON object as your response with price as given below.
-		
+		Provide only the final JSON object as your response.
 		"""
 		message = HumanMessage(
 			content=[
@@ -1831,6 +1508,8 @@ if st.session_state.step == "generate_listing":
 		)
 		response_content = invoke_text_model_with_tracking(llm, message)
 		listing_data = safe_json_parse(response_content)
+
+		print(listing_data)
 
 		if listing_data:
 			st.session_state.final_listing = listing_data
@@ -1953,7 +1632,7 @@ if st.session_state.step == "display_results":
 	)
 	
 	st.markdown("---")
-	if st.button("✅ Done - Start a New Session", key="done_single", use_container_width=True, type="primary"):
+	if st.button("Mischief Managed🪄", key="done_single", use_container_width=True, type="primary"):
 		reset_session_state()
 		st.rerun()
 
@@ -1971,8 +1650,16 @@ if st.session_state.step == "display_all_results":
 		image_mime_type=result["image_mime_type"]
 		)
 	st.markdown("---")
-	if st.button("✅ Done - Start a New Session", key="done_all", use_container_width=True, type="primary"):
+	if st.button("Mischief Managed🪄", key="done_all", use_container_width=True, type="primary"):
 		reset_session_state()
 		st.rerun()
+
+
+
+
+
+
+
+
 
 

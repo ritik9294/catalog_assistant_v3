@@ -28,4 +28,3 @@ If only one product is clearly the main subject, return an array with a single i
 If no clear product is visible, return an empty array.
 Provide only the JSON response.
 """
-
