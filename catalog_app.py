@@ -18,8 +18,6 @@ import pymysql
 warnings.filterwarnings("ignore")
 
 
-load_dotenv()
-
 GOOGLE_API_KEY = (
     st.secrets.get("GOOGLE_API_KEY")
     if "GOOGLE_API_KEY" in st.secrets
@@ -1976,4 +1974,5 @@ if st.session_state.step == "display_all_results":
 	if st.button("✅ Done - Start a New Session", key="done_all", use_container_width=True, type="primary"):
 		reset_session_state()
 		st.rerun()
+
 
